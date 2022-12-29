@@ -1,3 +1,4 @@
+""" Defines the Flickr dataset """
 import torch
 import torchvision
 from PIL import Image
@@ -24,7 +25,7 @@ class FlickerData(Dataset):
             image_handles = f.read().splitlines()  # list of image IDs
         self.n_images = len(image_handles)
         self.images = torch.zeros(
-            (self.n_images, 3, 224, 224))  # (width, height) -(resize)> (256,256) -(central crop)> (224,244)
+            (self.n_images, 3, 224, 224))  # (width, height) -(resize)> (256,256) -(central crop)> (224,224)
         self.labels = []  # (lemma caption, token caption)
 
         # Load in labels
@@ -60,6 +61,7 @@ class FlickerData(Dataset):
             self.labels.append((lemma_caption, caption))
 
     def __getitem__(self, index):
+        """ Returns tuple (image, lemma_caption, caption) """
         return (self.images[index, :, :, :], self.labels[index][0], self.labels[index][1])  # (torch.tensor, str, str)
 
     def __len__(self):
@@ -67,15 +69,13 @@ class FlickerData(Dataset):
 
 
 if __name__ == "__main__":
-    print("hello")
+
     t0 = time.time()
-    loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=3)
+    loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=3) # dataloader
     t_end = time.time() - t0
     print(f"Data loading time {t_end:.3f} s")
     iter_loader = iter(loader_data)
-    images, lemmas, captions = next(iter_loader)
-    print(images.shape)
+    images, lemmas, captions = next(iter_loader) # images: tensor, lemmas: tuple, captions: tuple
+    print(images.shape) # batch_size, n_channels, width, height
     print(lemmas)
-    print(type(lemmas))
     print(captions)
-    print(type(captions))
