@@ -59,7 +59,7 @@ class Decoder(torch.nn.Module):
         return p_word
 
     def predict(self, latent_embedding):
-        """ Used to prediction on images during testing """
+        """ Used to predict caption for images during testing """
         sentence = []
         lstm_out, _ = self.lstm(latent_embedding) # (batch, emb_dim) -> (batch_size, seq_len, hidden_size)
         prob = self.output_emb(lstm_out)
@@ -85,7 +85,6 @@ class Decoder(torch.nn.Module):
         return sentence 
 
 
-
 class ImageCaptionGenerator(torch.nn.Module):
 
     def __init__(self, mode):
@@ -99,6 +98,8 @@ class ImageCaptionGenerator(torch.nn.Module):
         pass
 
     def make_vocab(self, data):
+        """ Creates a vocabulary using training data.
+            Special symbols, <BOS>,<EOS>,<PAD>,<UNK> """
 
         UNKNOWN = "<UNKNOWN>"
         BOS = "<BOS>"
@@ -131,8 +132,6 @@ class ImageCaptionGenerator(torch.nn.Module):
         return self.decoder.predict(latent_image)
 
         
-
-
 
 if __name__ == "__main__":
         
