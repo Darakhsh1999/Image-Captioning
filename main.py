@@ -1,2 +1,11 @@
+import Params
+from model import ImageCaptionGenerator
 
-print("Welcome")
+def train(n_epochs, model):
+    """ Train the ICG """
+    pass
+
+
+if __name__ == "__main__":
+    p = Params.Params()
+    model = ImageCaptionGenerator()
