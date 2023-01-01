@@ -2,12 +2,18 @@ import torch
 import torch.nn as nn
 import torchvision
 import Params
+import spacy
+
+nlp = spacy.load("en_core_web_sm")
+from flickerdata import FlickerData
+from collections import Counter
+
 
 class Encoder(torch.nn.Module):
 
     def __init__(self, p):
         super().__init__()
-        
+
         #  load in encoder
         self.vgg = torchvision.models.vgg19()
         for _, param in self.vgg.named_parameters(): # freeze vgg weights
@@ -79,16 +85,44 @@ class Decoder(torch.nn.Module):
         return sentence 
 
 
+
 class ImageCaptionGenerator(torch.nn.Module):
 
-    def __init__(self):
+    def __init__(self, mode):
+        flickerdata = FlickerData("train")
+        self.vocab = self.make_vocab(flickerdata)
+
         self.encoder = Encoder()
         self.decoder = Decoder()
         self.loss = None
         self.optim = None
         pass
 
-    def forward(self, images, captions):
+    def make_vocab(self, data):
+
+        UNKNOWN = "<UNKNOWN>"
+        BOS = "<BOS>"
+        EOS = "<EOS>"
+
+        lemma_captions = []
+        for i in range(self.n_images):
+            lemma_captions.append(self.data[i][1])  # append lemma caption
+
+        freqs = Counter(t for x in lemma_captions for t in [t.text.lower() for t in nlp.tokenizer(x)])
+
+        vocab = {}
+        vocab[UNKNOWN] = 0
+        vocab[BOS] = 1
+        vocab[EOS] = 2
+
+        freq_list = freqs
+
+        for i, (w, count) in enumerate(freq_list):
+            self.vocab_x[w] = i + 3
+
+        return vocab
+
+    def forward(self):
         pass
 
     def predict(self, image):
@@ -97,6 +131,7 @@ class ImageCaptionGenerator(torch.nn.Module):
         return self.decoder.predict(latent_image)
 
         
+
 
 
 if __name__ == "__main__":
