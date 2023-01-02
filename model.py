@@ -55,7 +55,7 @@ class Decoder(torch.nn.Module):
         inputs = torch.cat((latent_vector, caption), dim= 0)
         output, _ = self.lstm(inputs)
         logits = self.output_emb(output)
-        p_word = self.softmax(logits)
+        p_word = self.softmax(logits) # probability distribution for each word
         return p_word
 
     def predict(self, latent_embedding):
@@ -123,15 +123,18 @@ class ImageCaptionGenerator(torch.nn.Module):
 
         return vocab
 
-    def forward(self):
-        pass
-
+    def forward(self, image):
+        """ Takes in images and returns probability distribution for each token """
+        latent_embedding = self.encoder(image)
+        return self.decoder(latent_embedding)
+        
     def predict(self, image):
         """ Takes in image and returns caption """
         latent_image = self.encoder(image)
         return self.decoder.predict(latent_image)
 
-        
+    def train(self, n_epochs):
+        pass
 
 if __name__ == "__main__":
         
