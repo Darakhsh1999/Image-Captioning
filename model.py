@@ -10,32 +10,32 @@ from collections import Counter
 
 
 class Encoder(torch.nn.Module):
+    """ Encodes image into an embeding vector used for decoder """
 
     def __init__(self, p):
         super().__init__()
 
-        #  load in encoder
-        self.vgg = torchvision.models.vgg19()
+        self.vgg = torchvision.models.vgg19() #  load in encoder
         for _, param in self.vgg.named_parameters(): # freeze vgg weights
             param.requires_grad = False
 
-        self.latent_embedding = nn.Linear(4096, p.emb_dim) # maps latent vector to word embedding
+        self.latent_embedding = nn.Linear(4096, p.emb_dim) # maps latent_vector to embed_vector
         
     def forward(self, X):
-        """ Takes in image X and outputs latent vector """
+        """ Takes in image X and outputs embed_vector """
 
         batch_size = X.shape[0]
 
         X = self.vgg.features(X) # convolutional part
-        X = self.vgg.avgpool(X) # sets to fixed size (512,7,7)
-        X = X.view(batch_size, 512*7*7) # flatten
-        X = self.vgg.classifier[0:3](X) 
-        X = self.latent_embedding(X)
+        X = self.vgg.avgpool(X) # sets to fixed size (512,7,7) 
+        X = X.view(batch_size, 512*7*7) # (batch,25088) flatten
+        X = self.vgg.classifier[0:3](X) # (batch,4096)
+        X = self.latent_embedding(X) # (batch,emb_dim)
         return X
 
 
 class Decoder(torch.nn.Module):
-    """ Decodes a latent vector into lemmas/captions """
+    """ Decodes a embed_vector into lemmas/captions """
 
     def __init__(self, p):
         super().__init__()
@@ -46,17 +46,26 @@ class Decoder(torch.nn.Module):
             hidden_size= p.hidden_size,
             num_layers= p.n_layers,
             batch_first= True)
-        self.word_emb = nn.Embedding(p.emb_dim, p.vocab_size) 
+        self.word_emb = nn.Embedding(p.vocab_size, p.emb_dim) 
         self.output_emb = nn.Linear(p.hidden_size, p.vocab_size)
-        self.softmax = nn.Softmax()
 
-    def forward(self, latent_vector, caption):
+    def forward(self, embed_vector, caption):
+        """ Takes in embed_vector and captions and outputs prob distribution 
+            Input:
+                embed_vector (batch, emb_dim)
+                caption (batch, max_sen_len)
+            Output:
+                probability (batch, max_sen_len, vocab_size)
+        """
 
-        inputs = torch.cat((latent_vector, caption), dim= 0)
-        output, _ = self.lstm(inputs)
-        logits = self.output_emb(output)
-        p_word = self.softmax(logits) # probability distribution for each word
-        return p_word
+        batch_size = embed_vector.shape[0]
+        embed_captions = self.word_emb(caption) # (batch_size, max_sen_len, emb_dim)
+        inputs = torch.cat( 
+            (embed_vector.view(batch_size, 1, self.p.emb_dim), embed_captions),
+            dim= 1) # (batch_size, max_sen_len+1, emb_dim)
+        output, _ = self.lstm(inputs) # (batch_size, max_sen_len+1, hidden_size)
+        logits = self.output_emb(output) # (batch_size, max_sen_len+1, vocab_size)
+        return logits
 
     def predict(self, latent_embedding):
         """ Used to predict caption for images during testing """
@@ -87,14 +96,15 @@ class Decoder(torch.nn.Module):
 
 class ImageCaptionGenerator(torch.nn.Module):
 
-    def __init__(self, mode):
-        flickerdata = FlickerData("train")
-        self.vocab = self.make_vocab(flickerdata)
+    def __init__(self, mode, p):
+        if mode not in ["train", "dev" "test"]:
+            raise ValueError(f"Incorrect mode {mode}")
+        self.vocab = self.make_vocab(FlickerData(mode))
 
-        self.encoder = Encoder()
-        self.decoder = Decoder()
-        self.loss = None
-        self.optim = None
+        self.encoder = Encoder(p)
+        self.decoder = Decoder(p)
+        self.loss = None # CE
+        self.optim = None # ADAMS ? 
         pass
 
     def make_vocab(self, data):
@@ -148,5 +158,5 @@ if __name__ == "__main__":
     print(A_out.shape)
 
     # Decoder testing
-    decoder = Decoder(p)
-    B_out = decoder(A_out)
+    #decoder = Decoder(p)
+    #B_out = decoder(A_out)
