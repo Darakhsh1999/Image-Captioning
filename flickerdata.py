@@ -18,11 +18,14 @@ class FlickerData(Dataset):
     def __init__(self, subset, vocab=None, max_vocab_len=None):
 
         if subset.lower() not in ["train", "dev", "test"]:
-            raise ValueError("Not valid option.")
+            raise ValueError(f"{subset} is not a valid option.")
 
+        list_captions = []
+        list_lemma_captions = []
         self.vocab = vocab
         self.max_vocab_len = max_vocab_len
 
+        # Load in paths
         image_path = f"Data\Flicker8k_text\Flickr_8k.{subset.lower()}Images.txt"
         lemma_caption_path = f"Data\Flicker8k_text\Flickr8k.lemma.token.txt"
         caption_path = f"Data\Flicker8k_text\Flickr8k.token.txt"
@@ -39,6 +42,7 @@ class FlickerData(Dataset):
         df_lc = pd.read_csv(lemma_caption_path, sep="\t", names=["captionID", "caption"])
         df_c = pd.read_csv(caption_path, sep="\t", names=["captionID", "caption"])
 
+        # Lemma caption
         df_lemma_caption = pd.DataFrame()
         df_lemma_caption[['image', 'id']] = df_lc.pop('captionID').str.split('#', n=1, expand=True)
         df_lemma_caption = df_lemma_caption.join(df_lc.pop('caption'))
@@ -46,12 +50,17 @@ class FlickerData(Dataset):
         df_lemma_caption.pop('id')
         image_to_lemma_caption = dict(df_lemma_caption.values)  # {'image_file': 'lemma caption'}
 
+        # Caption
         df_caption = pd.DataFrame()
         df_caption[['image', 'id']] = df_c.pop('captionID').str.split('#', n=1, expand=True)
         df_caption = df_caption.join(df_c.pop('caption'))
         df_caption = df_caption[df_caption['id'] == '0']
         df_caption.pop('id')
         image_to_caption = dict(df_caption.values)  # {'image_file': 'caption'}
+
+        # Create vocab for train data
+        if vocab is None:
+            vocab = self.make_vocab(self.labels)
 
         # Transform images from PIL to torch tensor & search for labels
         for img_idx, image_file in enumerate(image_handles):
@@ -60,14 +69,17 @@ class FlickerData(Dataset):
             transformed_image = vgg_transform(pil_image)
             self.images[img_idx, :, :, :] = transformed_image  # (n_images, n_channels, width, height)
 
-            # Labels
+            # String labels
             lemma_caption = image_to_lemma_caption[image_file]
             caption = image_to_caption[image_file]
 
-            self.labels.append((lemma_caption, caption))
+            # Tokenize string labels
 
-        if vocab is None:
-            vocab = self.make_vocab(self.labels)
+
+            # integer encode the tokens
+
+            # store integer in list
+            self.labels.append((lemma_caption, caption))
 
 
 
@@ -81,34 +93,27 @@ class FlickerData(Dataset):
 
     def make_vocab(self, data):
         """ Creates a vocabulary using training data.
-                                    Special symbols, <BOS>,<EOS>,<PAD>,<UNK> """
+            Special symbols, <BOS>,<EOS>,<PAD>,<UNK> """
 
-        vocab = {}
-        # s_vocab = len(self.max_vocab_len)
-
-        UNKNOWN = "<UNKNOWN>"
+        # Special symbols
+        UNK = "<UNK>"
+        PAD = "<PAD>"
         BOS = "<BOS>"
         EOS = "<EOS>"
-        PAD = "<PAD>"
-
+    
         lemma_captions = []
         for i in range(self.__len__()):
-            lemma_captions.append(self.data[i][0])  # append lemma caption
+            lemma_captions.append(data[i][0])  # append lemma caption
 
         word_count = Counter(t for x in lemma_captions for t in [t.text.lower() for t in nlp.tokenizer(x)])
-
-        vocab[UNKNOWN] = 0
-        vocab[BOS] = 1
-        vocab[EOS] = 2
-        vocab[PAD] = 3
 
         if self.max_vocab_len is not None:
             word_list = word_count.most_common(self.max_vocab_len - 4)
         else:
             word_list = word_count
 
-        for i, (w, count) in enumerate(word_list):
-            self.vocab[w] = i + 4
+        # Vocab dictionary
+        vocab = {token: id for id, token in enumerate([UNK, PAD, BOS, EOS] + word_list)}
 
         return vocab
 
