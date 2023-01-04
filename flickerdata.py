@@ -63,7 +63,8 @@ class FlickerData(Dataset):
 
         tokenized_lemmas = []
         tokenized_captions = []
-        max_sen_len = 0
+        max_sen_len_lc = 0
+        max_sen_len_c = 0
 
         # Transform images from PIL to torch tensor & search for labels
         for img_idx, image_file in enumerate(image_handles):
@@ -80,15 +81,9 @@ class FlickerData(Dataset):
             # Integer encode tokenized string labels
             tokens_lc = [vocab_lc.get(token.text.lower(), vocab_lc["<UNK>"]) for token in nlp.tokenizer(lemma_caption)] 
             tokens_c = [vocab_c.get(token.text.lower(), vocab_c["<UNK>"]) for token in nlp.tokenizer(caption)] 
-            if len(tokens_lc) != len(tokens_c):
-                print(len(tokens_lc))
-                print(len(tokens_c))
-                print(tokens_lc)
-                print(tokens_c)
-                print(self.decode(tokens_lc, inv_vocab_lc))
-                print(self.decode(tokens_c, inv_vocab_c))
-            assert(len(tokens_lc) == len(tokens_c))
-            if len(tokens_lc) > max_sen_len: max_sen_len = len(tokens_lc) # update max sentence lenght
+
+            if len(tokens_lc) > max_sen_len_lc: max_sen_len_lc = len(tokens_lc) # update max sentence lenght
+            if len(tokens_c) > max_sen_len_c: max_sen_len_c = len(tokens_c) # update max sentence lenght
             
             # Store integer encoded captions in list
             tokenized_lemmas.append(tokens_lc)
@@ -96,12 +91,13 @@ class FlickerData(Dataset):
 
         
         # integer tensor
-        self.labels_lc = torch.zeros((self.n_images, max_sen_len)) 
-        self.labels_c = torch.zeros((self.n_images, max_sen_len)) 
+        self.labels_lc = torch.zeros((self.n_images, max_sen_len_lc)) 
+        self.labels_c = torch.zeros((self.n_images, max_sen_len_c)) 
         for idx in range(self.n_images):
-            c_len = len(tokenized_captions[idx])
-            self.labels_lc[idx,:] = tokenized_lemmas[idx] + (max_sen_len-c_len)*[vocab_lc["<UNK>"]]
-            self.labels_c[idx,:] = tokenized_captions[idx] + (max_sen_len-c_len)*[vocab_c["<UNK>"]]
+            len_lc = len(tokenized_lemmas[idx])
+            len_c = len(tokenized_captions[idx])
+            self.labels_lc[idx,:] = torch.tensor(tokenized_lemmas[idx] + (max_sen_len_lc-len_lc)*[vocab_lc["<PAD>"]])
+            self.labels_c[idx,:] = torch.tensor(tokenized_captions[idx] + (max_sen_len_c-len_c)*[vocab_c["<PAD>"]])
 
 
     def __getitem__(self, index):
@@ -148,11 +144,11 @@ if __name__ == "__main__":
 
     t0 = time.time()
     dataset =  FlickerData(subset= "train", max_vocab_len= None)
-    #loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=3)  # dataloader
+    loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=3)  # dataloader
     t_end = time.time() - t0
     print(f"Data loading time {t_end:.3f} s")
-    #iter_loader = iter(loader_data)
-    #images, lemmas, captions = next(iter_loader)  # images: tensor, lemmas: tuple, captions: tuple
-    #print(images.shape)  # batch_size, n_channels, width, height
-    #print(lemmas)
-    #print(captions)
+    iter_loader = iter(loader_data)
+    images, lemmas, captions = next(iter_loader)  # images: tensor, lemmas: tuple, captions: tuple
+    print(images.shape)  # batch_size, n_channels, width, height
+    print(lemmas)
+    print(captions)
