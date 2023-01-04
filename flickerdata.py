@@ -20,8 +20,6 @@ class FlickerData(Dataset):
         if subset.lower() not in ["train", "dev", "test"]:
             raise ValueError(f"{subset} is not a valid option.")
 
-        list_captions = []
-        list_lemma_captions = []
         self.vocab = vocab
         self.max_vocab_len = max_vocab_len
 
@@ -34,15 +32,15 @@ class FlickerData(Dataset):
         with open(image_path) as f:
             image_handles = f.read().splitlines()  # list of image IDs
         self.n_images = len(image_handles)
-        self.images = torch.zeros(
-            (self.n_images, 3, 224, 224))  # (width, height) -(resize)> (256,256) -(central crop)> (224,224)
+        # (width, height) -(resize)> (256,256) -(central crop)> (224,224)
+        self.images = torch.zeros((self.n_images, 3, 224, 224))  
         self.labels = []  # (lemma caption, token caption)
 
-        # Load in labels
+        # Load in labels 
         df_lc = pd.read_csv(lemma_caption_path, sep="\t", names=["captionID", "caption"])
         df_c = pd.read_csv(caption_path, sep="\t", names=["captionID", "caption"])
 
-        # Lemma caption
+        # Lemma caption for all images
         df_lemma_caption = pd.DataFrame()
         df_lemma_caption[['image', 'id']] = df_lc.pop('captionID').str.split('#', n=1, expand=True)
         df_lemma_caption = df_lemma_caption.join(df_lc.pop('caption'))
@@ -50,7 +48,7 @@ class FlickerData(Dataset):
         df_lemma_caption.pop('id')
         image_to_lemma_caption = dict(df_lemma_caption.values)  # {'image_file': 'lemma caption'}
 
-        # Caption
+        # Caption for all images
         df_caption = pd.DataFrame()
         df_caption[['image', 'id']] = df_c.pop('captionID').str.split('#', n=1, expand=True)
         df_caption = df_caption.join(df_c.pop('caption'))
@@ -60,71 +58,101 @@ class FlickerData(Dataset):
 
         # Create vocab for train data
         if vocab is None:
-            vocab = self.make_vocab(self.labels)
+            vocab_lc, inv_vocab_lc = self.make_vocab(image_to_lemma_caption.values())
+            vocab_c, inv_vocab_c = self.make_vocab(image_to_caption.values())
+
+        tokenized_lemmas = []
+        tokenized_captions = []
+        max_sen_len = 0
 
         # Transform images from PIL to torch tensor & search for labels
         for img_idx, image_file in enumerate(image_handles):
+
             # Images
             pil_image = Image.open(f"Data\Flicker8k_images\{image_file}")
             transformed_image = vgg_transform(pil_image)
             self.images[img_idx, :, :, :] = transformed_image  # (n_images, n_channels, width, height)
 
-            # String labels
+            # String labels for image handle
             lemma_caption = image_to_lemma_caption[image_file]
             caption = image_to_caption[image_file]
 
-            # Tokenize string labels
+            # Integer encode tokenized string labels
+            tokens_lc = [vocab_lc.get(token.text.lower(), vocab_lc["<UNK>"]) for token in nlp.tokenizer(lemma_caption)] 
+            tokens_c = [vocab_c.get(token.text.lower(), vocab_c["<UNK>"]) for token in nlp.tokenizer(caption)] 
+            if len(tokens_lc) != len(tokens_c):
+                print(len(tokens_lc))
+                print(len(tokens_c))
+                print(tokens_lc)
+                print(tokens_c)
+                print(self.decode(tokens_lc, inv_vocab_lc))
+                print(self.decode(tokens_c, inv_vocab_c))
+            assert(len(tokens_lc) == len(tokens_c))
+            if len(tokens_lc) > max_sen_len: max_sen_len = len(tokens_lc) # update max sentence lenght
+            
+            # Store integer encoded captions in list
+            tokenized_lemmas.append(tokens_lc)
+            tokenized_captions.append(tokens_c)
 
-
-            # integer encode the tokens
-
-            # store integer in list
-            self.labels.append((lemma_caption, caption))
-
+        
+        # integer tensor
+        self.labels_lc = torch.zeros((self.n_images, max_sen_len)) 
+        self.labels_c = torch.zeros((self.n_images, max_sen_len)) 
+        for idx in range(self.n_images):
+            c_len = len(tokenized_captions[idx])
+            self.labels_lc[idx,:] = tokenized_lemmas[idx] + (max_sen_len-c_len)*[vocab_lc["<UNK>"]]
+            self.labels_c[idx,:] = tokenized_captions[idx] + (max_sen_len-c_len)*[vocab_c["<UNK>"]]
 
 
     def __getitem__(self, index):
         """ Returns tuple (image, lemma_caption, caption) """
         # (dataset_size, img, caption)[i] -> (tensor(3,224,224), tensor(max_sen_len), tensor(max_sen_len))
-        return (self.images[index, :, :, :], self.labels[index][0], self.labels[index][1])  # (torch.tensor, str, str)
+        return (self.images[index, :, :, :], self.labels_lc[index,:], self.labels_c[index,:]) 
 
     def __len__(self):
         return self.n_images
 
     def make_vocab(self, data):
         """ Creates a vocabulary using training data.
-            Special symbols, <BOS>,<EOS>,<PAD>,<UNK> """
+            Special symbols, <BOS>,<EOS>,<PAD>,<UNK>
+            Parameters:
+              data: list of captions/lemmas """
 
         # Special symbols
-        UNK = "<UNK>"
-        PAD = "<PAD>"
-        BOS = "<BOS>"
-        EOS = "<EOS>"
-    
-        lemma_captions = []
-        for i in range(self.__len__()):
-            lemma_captions.append(data[i][0])  # append lemma caption
+        PAD = "<PAD>" # 0
+        UNK = "<UNK>" # 1
+        BOS = "<BOS>" # 2
+        EOS = "<EOS>" # 3
+        special_char = [PAD, UNK, BOS, EOS]
 
-        word_count = Counter(t for x in lemma_captions for t in [t.text.lower() for t in nlp.tokenizer(x)])
+        # Create word counts for all captions
+        word_count = Counter(t for x in data for t in [t.text.lower() for t in nlp.tokenizer(x)])
 
-        if self.max_vocab_len is not None:
-            word_list = word_count.most_common(self.max_vocab_len - 4)
+        # List of words including special characters
+        if self.max_vocab_len is None:
+            word_list = special_char + list(word_count.keys())
         else:
-            word_list = word_count
+            most_common_word = word_count.most_common(self.max_vocab_len - len(special_char)) 
+            word_list = special_char + [word[0] for word in most_common_word]
 
         # Vocab dictionary
-        vocab = {token: id for id, token in enumerate([UNK, PAD, BOS, EOS] + word_list)}
+        vocab = {token: int_id for int_id, token in enumerate(word_list)}
+        inv_vocab = {int_id: token for int_id, token in enumerate(word_list)}
 
-        return vocab
+        return vocab, inv_vocab
 
+    def decode(self, caption, inv_vocab: dict):
+        return [inv_vocab[id] for id in caption]
 
 if __name__ == "__main__":
+
     t0 = time.time()
-    loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=3)  # dataloader
+    dataset =  FlickerData(subset= "train", max_vocab_len= None)
+    #loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=3)  # dataloader
     t_end = time.time() - t0
     print(f"Data loading time {t_end:.3f} s")
-    iter_loader = iter(loader_data)
-    images, lemmas, captions = next(iter_loader)  # images: tensor, lemmas: tuple, captions: tuple
-    print(images.shape)  # batch_size, n_channels, width, height
-    print(lemmas)
-    print(captions)
+    #iter_loader = iter(loader_data)
+    #images, lemmas, captions = next(iter_loader)  # images: tensor, lemmas: tuple, captions: tuple
+    #print(images.shape)  # batch_size, n_channels, width, height
+    #print(lemmas)
+    #print(captions)
