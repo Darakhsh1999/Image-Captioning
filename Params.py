@@ -1,3 +1,4 @@
+import torch.nn as nn
 
 class Params():
 
@@ -15,3 +16,4 @@ class Params():
     # Training
     n_epochs = 50
     lr = 0.001
+    

@@ -1,0 +1,4 @@
+- change lemma_caption to lemma
+- move out dataloader from the ICG class and make it separtate (refactoring)
+- device to GPU 
+- when training looks good, implement saving model

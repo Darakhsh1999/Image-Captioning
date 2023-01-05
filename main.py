@@ -1,8 +1,9 @@
 import Params
 from model import ImageCaptionGenerator
+from model import train_ICG
 
 
 if __name__ == "__main__":
     p = Params.Params()
     model = ImageCaptionGenerator()
-    model.train(p.n_epochs)
+    train_ICG(model,  n_epochs= 10)

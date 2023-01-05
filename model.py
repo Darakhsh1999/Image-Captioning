@@ -3,6 +3,7 @@ import torch.nn as nn
 import torchvision
 import pickle
 import os
+from tqdm import trange
 from torch.utils.data import DataLoader
 from Params import Params
 from flickerdata import FlickerData
@@ -105,7 +106,7 @@ class ImageCaptionGenerator(torch.nn.Module):
             with open("Datasets/dataset.p", "rb") as f:
                 train_dataset, dev_dataset, test_dataset = pickle.load(f)
         else:
-            raise FileExistsError("Run flickerdata.py first")
+            raise FileExistsError("Run flickerdata.py first to create dataset")
         train_dataloader = DataLoader(dataset= train_dataset, batch_size=p.batch_size)
         val_dataloader = DataLoader(dataset= dev_dataset, batch_size=p.batch_size)
         test_dataloader = DataLoader(dataset= test_dataset, batch_size=p.batch_size)
@@ -114,25 +115,55 @@ class ImageCaptionGenerator(torch.nn.Module):
         self.vocab_lc = train_dataset.vocab_lc
         self.vocab_c = train_dataset.vocab_c
 
+        self.p = p
         self.encoder = Encoder(p)
         self.decoder = Decoder(p)
-        self.loss = nn.CrossEntropyLoss(ignore_index= self.vocab_lc.get("<PAD>"))  
-        self.optim = None  # ADAMS ?
+        self.criterion = nn.CrossEntropyLoss(ignore_index= self.vocab_lc.get("<PAD>"))  
+        self.optimizer = None  # ADAMS ?
         pass
 
-    def forward(self, image):
+    def forward(self, image, lemma):
         """ Takes in images and returns probability distribution for each token """
         latent_embedding = self.encoder(image)
-        return self.decoder(latent_embedding)
+        return self.decoder(latent_embedding, lemma)
 
     def predict(self, image):
         """ Takes in image and returns caption """
         latent_image = self.encoder(image)
         return self.decoder.predict(latent_image)
 
-    def train(self, n_epochs):
-        pass
 
+def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, n_epochs):
+
+    PAD = model.vocab_lc["<PAD>"]
+    # define loss and optimzer here
+    # define device
+
+    for epoch in trange(n_epochs):
+
+        for batch_idx, batch in enumerate(train_dataloader):
+            
+            # images: [batch,channel,width,height], lemmas: [batch,max_sen_len] 
+            images, lemmas, _ = batch 
+            target = torch.cat((lemmas,PAD[None]), dim= 1) 
+           
+            # forward pass
+            model.train()
+            output_logits = model(images, lemmas)
+            # softmax ? 
+
+            #  calculate loss
+            model.optimizer.zero_grad()
+            loss = model.criterion(output_logits, target)
+            print(loss.item())
+            loss.backward()
+
+            # optimizer step
+            model.optimizer.step()
+
+            #model.eval()
+            # validation stuff (ROGUE/BLEU) , use prediuct function
+            
 
 if __name__ == "__main__":
     batch_size = 8
