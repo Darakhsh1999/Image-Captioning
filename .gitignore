@@ -109,6 +109,7 @@ pip-selfcheck.json
 # User-specific stuff:
 .idea
 Data/
+Datasets/
 
 # Sensitive or high-churn files:
 *.pth

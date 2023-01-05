@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torchvision
+import pickle
+import os
 from torch.utils.data import DataLoader
-
 from Params import Params
 from flickerdata import FlickerData
-from Vocabulary import Vocabulary
 
 
 class Encoder(torch.nn.Module):
@@ -96,23 +96,29 @@ class Decoder(torch.nn.Module):
 class ImageCaptionGenerator(torch.nn.Module):
 
     def __init__(self, p: Params):
-        t_data = FlickerData("train")
-        #vocab = t_data.get_vocab()
-        #val_data = FlickerData("dev", vocab=vocab)
-        train_dataloader = DataLoader(dataset=t_data, batch_size=p.batch_size)
-        val_dataloader = DataLoader(dataset=FlickerData(subset="dev"), batch_size=p.batch_size)
-        test_dataloader = DataLoader(dataset=FlickerData(subset="test"), batch_size=p.batch_size)
 
-        self.vocab = self.make_vocab(t_data)
+        # Load in data and make dataloaders
+        if os.path.exists("Datasets/dataset.p"):
+            train_dataset: FlickerData
+            dev_dataset: FlickerData
+            test_dataset: FlickerData
+            with open("Datasets/dataset.p", "rb") as f:
+                train_dataset, dev_dataset, test_dataset = pickle.load(f)
+        else:
+            raise FileExistsError("Run flickerdata.py first")
+        train_dataloader = DataLoader(dataset= train_dataset, batch_size=p.batch_size)
+        val_dataloader = DataLoader(dataset= dev_dataset, batch_size=p.batch_size)
+        test_dataloader = DataLoader(dataset= test_dataset, batch_size=p.batch_size)
+
+        # Create vocabulary
+        self.vocab_lc = train_dataset.vocab_lc
+        self.vocab_c = train_dataset.vocab_c
 
         self.encoder = Encoder(p)
         self.decoder = Decoder(p)
-        self.loss = None  # CE
+        self.loss = nn.CrossEntropyLoss(ignore_index= self.vocab_lc.get("<PAD>"))  
         self.optim = None  # ADAMS ?
         pass
-
-    def make_vocab(self, data):
-        return Vocabulary(data).get_vocab()
 
     def forward(self, image):
         """ Takes in images and returns probability distribution for each token """

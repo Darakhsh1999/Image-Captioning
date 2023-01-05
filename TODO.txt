@@ -1,2 +1,0 @@
-- pickle dataset variables cause they are determenistic
-- make vocab attribute to dataset

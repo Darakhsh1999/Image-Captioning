@@ -1,4 +1,5 @@
 """ Defines the Flickr dataset """
+import os
 import pickle
 import torch
 import torchvision
@@ -18,6 +19,7 @@ class FlickerData(Dataset):
 
     def __init__(self, subset, vocab=None, max_vocab_len=None):
 
+        # Error check input
         if subset.lower() not in ["train", "dev", "test"]:
             raise ValueError(f"{subset} is not a valid option.")
 
@@ -35,7 +37,6 @@ class FlickerData(Dataset):
         self.n_images = len(image_handles)
         # (width, height) -(resize)> (256,256) -(central crop)> (224,224)
         self.images = torch.zeros((self.n_images, 3, 224, 224))  
-        self.labels = []  # (lemma caption, token caption)
 
         # Load in labels 
         df_lc = pd.read_csv(lemma_caption_path, sep="\t", names=["captionID", "caption"])
@@ -58,9 +59,11 @@ class FlickerData(Dataset):
         image_to_caption = dict(df_caption.values)  # {'image_file': 'caption'}
 
         # Create vocab for train data
-        if vocab is None:
-            self.vocab_lc, self.inv_vocab_lc = self.make_vocab(image_to_lemma_caption.values())
-            self.vocab_c, self.inv_vocab_c = self.make_vocab(image_to_caption.values())
+        if self.vocab is None:
+            self.vocab_lc, self.inv_vocab_lc = self.make_vocab(image_to_lemma_caption.values(), self.max_vocab_len)
+            self.vocab_c, self.inv_vocab_c = self.make_vocab(image_to_caption.values(), self.max_vocab_len)
+        else:
+            self.vocab_lc, self.inv_vocab_lc, self.vocab_c, self.inv_vocab_c = self.vocab
 
         tokenized_lemmas = []
         tokenized_captions = []
@@ -94,15 +97,22 @@ class FlickerData(Dataset):
             tokenized_captions.append(tokens_c)
 
         # integer tensor
-        self.labels_lc = torch.zeros((self.n_images, max_sen_len_lc), dtype= torch.int32) 
-        self.labels_c = torch.zeros((self.n_images, max_sen_len_c), dtype= torch.int32) 
+        self.labels_lc = torch.zeros((self.n_images, max_sen_len_lc+2), dtype= torch.int32) 
+        self.labels_c = torch.zeros((self.n_images, max_sen_len_c+2), dtype= torch.int32) 
         for idx in range(self.n_images):
             len_lc = len(tokenized_lemmas[idx])
             len_c = len(tokenized_captions[idx])
-            self.labels_lc[idx,:] = torch.tensor(tokenized_lemmas[idx] + (max_sen_len_lc-len_lc)*[self.vocab_lc["<PAD>"]],
+            self.labels_lc[idx,:] = torch.tensor([self.vocab_lc["<BOS>"]] +
+                                                 tokenized_lemmas[idx] +
+                                                 [self.vocab_lc["<EOS>"]] + 
+                                                 (max_sen_len_lc-len_lc)*[self.vocab_lc["<PAD>"]],
                                                  dtype= torch.int32)
-            self.labels_c[idx,:] = torch.tensor(tokenized_captions[idx] + (max_sen_len_c-len_c)*[self.vocab_c["<PAD>"]],
-                                                dtype= torch.int32)
+
+            self.labels_c[idx,:] = torch.tensor([self.vocab_c["<BOS>"]] +
+                                                 tokenized_captions[idx] +
+                                                 [self.vocab_c["<EOS>"]] + 
+                                                 (max_sen_len_c-len_c)*[self.vocab_c["<PAD>"]],
+                                                 dtype= torch.int32)
 
     def __getitem__(self, index):
         """ Returns tuple (image, lemma_caption, caption) """
@@ -112,7 +122,7 @@ class FlickerData(Dataset):
     def __len__(self):
         return self.n_images
 
-    def make_vocab(self, data):
+    def make_vocab(self, data, max_vocab_len):
         """ Creates a vocabulary using training data.
             Special symbols, <BOS>,<EOS>,<PAD>,<UNK>
             Parameters:
@@ -129,30 +139,51 @@ class FlickerData(Dataset):
         word_count = Counter(t for x in data for t in [t.text.lower() for t in nlp.tokenizer(x)])
 
         # List of words including special characters
-        if self.max_vocab_len is None:
+        if max_vocab_len is None:
             word_list = special_char + list(word_count.keys())
         else:
-            most_common_word = word_count.most_common(self.max_vocab_len - len(special_char)) 
+            most_common_word = word_count.most_common(max_vocab_len - len(special_char)) 
             word_list = special_char + [word[0] for word in most_common_word]
 
         # Vocab dictionary
         vocab = {token: int_id for int_id, token in enumerate(word_list)}
-        inv_vocab = {int_id: token for int_id, token in enumerate(word_list)} # inverted dictionary
+        inv_vocab = {int_id: token for int_id, token in enumerate(word_list)}
 
         return vocab, inv_vocab
 
-    def decode(self, caption, inv_vocab: dict):
-        return [inv_vocab[id.item()] for id in caption]
+    def decode_lc(self, lemma_caption):
+        return [self.inv_vocab_lc[id.item()] for id in lemma_caption]
+
+    def decode_c(self, caption):
+        return [self.inv_vocab_c[id.item()] for id in caption]
 
 if __name__ == "__main__":
 
     t0 = time.time()
-    dataset =  FlickerData(subset= "train", max_vocab_len= None)
-    loader_data = DataLoader(dataset=FlickerData(subset="train"), batch_size=10)  # dataloader
-    t_end = time.time() - t0
-    print(f"Data loading time {t_end:.3f} s")
-    iter_loader = iter(loader_data)
+    if not os.path.exists("Datasets/dataset.p"):
+        
+        # Create 3 datasets
+        train_dataset =  FlickerData(subset= "train", max_vocab_len= None)
+        train_voc = (
+            train_dataset.vocab_lc,
+            train_dataset.inv_vocab_lc,
+            train_dataset.vocab_c,
+            train_dataset.inv_vocab_c)
+        dev_dataset =  FlickerData(subset= "dev", vocab= train_voc, max_vocab_len= None)
+        test_dataset =  FlickerData(subset= "test", vocab= train_voc, max_vocab_len= None)
 
-    for _ in range(10):
-        images, lemmas, captions = next(iter_loader)  # images: tensor, lemmas: tuple, captions: tuple
-        print(dataset.decode(lemmas[0,:], dataset.inv_vocab_lc))
+        # Write data to memory
+        with open("Datasets/dataset.p", "wb") as f:
+            pickle.dump([train_dataset, dev_dataset, test_dataset], f)
+
+    else: # load in variables
+
+        with open("Datasets/dataset.p", "rb") as f:
+            train_dataset, dev_dataset, test_dataset = pickle.load(f)
+        
+    print(f"time: {time.time()-t0:.3f}")
+    train_dataloader = DataLoader(dataset= train_dataset, batch_size=10)  # dataloader
+    image, lemmas, captions = next(iter(train_dataloader))
+    print(lemmas[0,:])
+    print(train_dataset.decode_lc(lemmas[0,:]))
+    
