@@ -82,13 +82,13 @@ class Decoder(torch.nn.Module):
         sentence_length = 1
         while (sentence_length <= self.p.max_sen_len):
             emb_token = self.word_emb(next_token)  # integer-representation -> word_embedding
-            lstm_out, _ = self.lstm(emb_token)
+            lstm_out, _ = self.lstm(torch.unsqueeze(emb_token, dim=0))
             prob = self.output_emb(lstm_out)
             norm_prob = nn.functional.softmax(prob)
             next_token = norm_prob.argmax()
             sentence.append(next_token)
             sentence_length += 1
-            if (next_token == "<EOS>"):
+            if (next_token.item() == 3):  # "<EOS>" change to vocab.get
                 break
 
         return sentence
@@ -97,6 +97,8 @@ class Decoder(torch.nn.Module):
 class ImageCaptionGenerator(torch.nn.Module):
 
     def __init__(self, p: Params):
+
+        super().__init__()
 
         # Load in data and make dataloaders
         if os.path.exists("Datasets/dataset.p"):
@@ -107,9 +109,9 @@ class ImageCaptionGenerator(torch.nn.Module):
                 train_dataset, dev_dataset, test_dataset = pickle.load(f)
         else:
             raise FileExistsError("Run flickerdata.py first to create dataset")
-        train_dataloader = DataLoader(dataset= train_dataset, batch_size=p.batch_size)
-        val_dataloader = DataLoader(dataset= dev_dataset, batch_size=p.batch_size)
-        test_dataloader = DataLoader(dataset= test_dataset, batch_size=p.batch_size)
+        self.train_dataloader = DataLoader(dataset=train_dataset, batch_size=p.batch_size)
+        self.val_dataloader = DataLoader(dataset=dev_dataset, batch_size=p.batch_size)
+        self.test_dataloader = DataLoader(dataset=test_dataset, batch_size=p.batch_size)
 
         # Create vocabulary
         self.vocab_lc = train_dataset.vocab_lc
@@ -118,8 +120,8 @@ class ImageCaptionGenerator(torch.nn.Module):
         self.p = p
         self.encoder = Encoder(p)
         self.decoder = Decoder(p)
-        self.criterion = nn.CrossEntropyLoss(ignore_index= self.vocab_lc.get("<PAD>"))  
-        self.optimizer = None  # ADAMS ?
+        self.criterion = nn.CrossEntropyLoss(ignore_index=self.vocab_lc.get("<PAD>"))
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=p.lr)  # ADAMS ?
         pass
 
     def forward(self, image, lemma):
@@ -134,7 +136,6 @@ class ImageCaptionGenerator(torch.nn.Module):
 
 
 def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, n_epochs):
-
     PAD = model.vocab_lc["<PAD>"]
     # define loss and optimzer here
     # define device
@@ -142,18 +143,25 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, n_
     for epoch in trange(n_epochs):
 
         for batch_idx, batch in enumerate(train_dataloader):
-            
-            # images: [batch,channel,width,height], lemmas: [batch,max_sen_len] 
-            images, lemmas, _ = batch 
-            target = torch.cat((lemmas,PAD[None]), dim= 1) 
-           
+            # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
+            images, lemmas, _ = batch
+            print(torch.tensor(PAD).repeat(10, 1))
+            target = torch.cat((lemmas, torch.tensor(PAD).repeat(10, 1)), dim=1)
+            print(f"target is of shape {target.shape}")
+            target = torch.flatten(target)
+            print(f"flattened target is of shape {target.shape}")
+
             # forward pass
             model.train()
             output_logits = model(images, lemmas)
+            print(f"output from model is of shape {output_logits.shape}")
+            output_logits = torch.flatten(output_logits, start_dim=0, end_dim=1)
+            print(f"flattened output from model is of shape {output_logits.shape}")
             # softmax ? 
 
             #  calculate loss
             model.optimizer.zero_grad()
+
             loss = model.criterion(output_logits, target)
             print(loss.item())
             loss.backward()
@@ -161,9 +169,9 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, n_
             # optimizer step
             model.optimizer.step()
 
-            #model.eval()
+            # model.eval()
             # validation stuff (ROGUE/BLEU) , use prediuct function
-            
+
 
 if __name__ == "__main__":
     batch_size = 8
