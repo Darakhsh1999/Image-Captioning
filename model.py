@@ -115,6 +115,8 @@ class ImageCaptionGenerator(torch.nn.Module):
 
 
 def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, par):
+    device = next(model.parameters()).device
+
     # Define loss and optimizer
     PAD = model.vocab_lc["<PAD>"]
     loss_func = nn.CrossEntropyLoss(ignore_index=PAD)
@@ -136,6 +138,8 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
             print(f"batch: {batch_idx + 1} / {num_batches}")
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
             images, lemmas, _ = batch
+            images = images.to(device)
+            lemmas = lemmas.to(device)
 
             # set target to padded lemmas
             target = torch.cat((lemmas, torch.tensor(PAD).repeat(par.batch_size, 1)), dim=1)
@@ -165,6 +169,8 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
             for batch_idx, batch in enumerate(dev_dataloader):
                 # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
                 images, lemmas, _ = batch
+                images = images.to(device)
+                lemmas = lemmas.to(device)
 
                 # forward pass
                 predicted_tokens_encoded = model.predict(images)
