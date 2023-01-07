@@ -1,6 +1,7 @@
 import torch
+from torch.utils.data import DataLoader
 
-import Params
+from Params import Params
 from model import ImageCaptionGenerator
 from model import train_ICG
 import os
@@ -8,6 +9,7 @@ from flickerdata import FlickerData
 import pickle
 
 if __name__ == "__main__":
+
     # Load in data and make dataloaders
     if os.path.exists("Datasets/dataset.p"):
         train_dataset: FlickerData
@@ -18,11 +20,15 @@ if __name__ == "__main__":
     else:
         raise FileExistsError("Run flickerdata.py first to create dataset")
 
-    print(f"vocab size is {len(train_dataset.vocab_lc)}")
-    p = Params.Params(vocab_size=len(train_dataset.vocab_lc))
+    vocab_lc = train_dataset.vocab_lc
+    par = Params(vocab_size=len(vocab_lc))
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=par.batch_size)
+    val_dataloader = DataLoader(dataset=dev_dataset, batch_size=par.batch_size)
+    test_dataloader = DataLoader(dataset=test_dataset, batch_size=par.batch_size)
 
-    model = ImageCaptionGenerator(p)
-    train_ICG(model, model.test_dataloader, model.val_dataloader, p)
+    # create model and start training
+    model = ImageCaptionGenerator(vocab_lc, par)
+    train_ICG(model, train_dataloader, val_dataloader, par)
 
     # check prediction
     model.eval()

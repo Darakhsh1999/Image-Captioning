@@ -2,12 +2,8 @@ import time
 import torch
 import torch.nn as nn
 import torchvision
-import pickle
-import os
 from tqdm import tqdm
-from torch.utils.data import DataLoader
 from Params import Params
-from flickerdata import FlickerData
 from collections import defaultdict
 
 
@@ -98,33 +94,14 @@ class Decoder(torch.nn.Module):
 
 class ImageCaptionGenerator(torch.nn.Module):
 
-    def __init__(self, p: Params):
-
+    def __init__(self, vocab_lc, par: Params):
         super().__init__()
+        self.vocab_lc = vocab_lc
 
-        # Load in data and make dataloaders
-        if os.path.exists("Datasets/dataset.p"):
-            train_dataset: FlickerData
-            dev_dataset: FlickerData
-            test_dataset: FlickerData
-            with open("Datasets/dataset.p", "rb") as f:
-                train_dataset, dev_dataset, test_dataset = pickle.load(f)
-        else:
-            raise FileExistsError("Run flickerdata.py first to create dataset")
-        self.train_dataloader = DataLoader(dataset=train_dataset, batch_size=p.batch_size)
-        self.val_dataloader = DataLoader(dataset=dev_dataset, batch_size=p.batch_size)
-        self.test_dataloader = DataLoader(dataset=test_dataset, batch_size=p.batch_size)
-
-        # Create vocabulary
-        self.vocab_lc = train_dataset.vocab_lc
-        self.vocab_c = train_dataset.vocab_c
-
-        self.p = p
-        self.encoder = Encoder(p)
-        self.decoder = Decoder(p)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=self.vocab_lc.get("<PAD>"))
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=p.lr)  # ADAMS ?
-        pass
+        # set up network layers
+        self.p = par
+        self.encoder = Encoder(par)
+        self.decoder = Decoder(par)
 
     def forward(self, image, lemma):
         """ Takes in images and returns probability distribution for each token """
@@ -138,7 +115,6 @@ class ImageCaptionGenerator(torch.nn.Module):
 
 
 def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, par):
-
     # Define loss and optimizer
     PAD = model.vocab_lc["<PAD>"]
     loss_func = nn.CrossEntropyLoss(ignore_index=PAD)
@@ -205,7 +181,6 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         history['time'].append(t1 - t0)
 
         progress.set_postfix({'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
-
 
 
 if __name__ == "__main__":
