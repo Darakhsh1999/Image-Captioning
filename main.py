@@ -28,6 +28,9 @@ if __name__ == "__main__":
 
     # create model and start training
     model = ImageCaptionGenerator(vocab_lc, par)
+    if os.path.exists("Models/icg.pt"):
+        model.load_state_dict(torch.load("Models/icg.pt"))
+
     train_ICG(model, train_dataloader, val_dataloader, par)
 
     # check prediction
