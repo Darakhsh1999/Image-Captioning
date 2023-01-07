@@ -27,7 +27,14 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=par.batch_size)
 
     # create model and start training
+    if torch.cuda.is_available():
+        dev = "cuda:0"
+    else:
+        dev = "cpu"
+    device = torch.device(dev)
+
     model = ImageCaptionGenerator(vocab_lc, par)
+    model.to(device)
     if os.path.exists("Models/icg.pt"):
         model.load_state_dict(torch.load("Models/icg.pt"))
 
