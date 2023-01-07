@@ -14,5 +14,5 @@ class Params:
     n_layers = 2
 
     # Training
-    n_epochs = 50
-    lr = 0.001
+    n_epochs = 3
+    lr = 0.01

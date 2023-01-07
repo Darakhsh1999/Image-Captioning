@@ -22,7 +22,7 @@ if __name__ == "__main__":
     p = Params.Params(vocab_size=len(train_dataset.vocab_lc))
 
     model = ImageCaptionGenerator(p)
-    train_ICG(model, model.test_dataloader, model.val_dataloader, n_epochs=1)
+    train_ICG(model, model.test_dataloader, model.val_dataloader, p)
 
     # check prediction
     model.eval()

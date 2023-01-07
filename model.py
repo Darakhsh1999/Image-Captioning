@@ -1,12 +1,14 @@
+import time
 import torch
 import torch.nn as nn
 import torchvision
 import pickle
 import os
-from tqdm import trange
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 from Params import Params
 from flickerdata import FlickerData
+from collections import defaultdict
 
 
 class Encoder(torch.nn.Module):
@@ -135,42 +137,75 @@ class ImageCaptionGenerator(torch.nn.Module):
         return self.decoder.predict(latent_image)
 
 
-def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, n_epochs):
+def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, par):
+
+    # Define loss and optimizer
     PAD = model.vocab_lc["<PAD>"]
-    # define loss and optimzer here
-    # define device
+    loss_func = nn.CrossEntropyLoss(ignore_index=PAD)
+    optimizer = torch.optim.Adam(model.parameters(), lr=par.lr)
 
-    for epoch in trange(n_epochs):
+    # Contains the statistics that will be returned.
+    history = defaultdict(list)
 
+    progress = tqdm(range(par.n_epochs), 'Epochs')
+    for epoch in progress:
+
+        t0 = time.time()
+
+        # run one epoch of training
+        model.train()
+        training_loss = 0
         for batch_idx, batch in enumerate(train_dataloader):
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
             images, lemmas, _ = batch
-            print(torch.tensor(PAD).repeat(10, 1))
+
+            # set target to padded lemmas
             target = torch.cat((lemmas, torch.tensor(PAD).repeat(10, 1)), dim=1)
-            print(f"target is of shape {target.shape}")
-            target = torch.flatten(target)
-            print(f"flattened target is of shape {target.shape}")
+            target = torch.flatten(target)  # flatten batch dims
 
             # forward pass
-            model.train()
             output_logits = model(images, lemmas)
-            print(f"output from model is of shape {output_logits.shape}")
-            output_logits = torch.flatten(output_logits, start_dim=0, end_dim=1)
-            print(f"flattened output from model is of shape {output_logits.shape}")
-            # softmax ? 
+            output_logits = torch.flatten(output_logits, start_dim=0, end_dim=1)  # flatten batch dims
 
             #  calculate loss
-            model.optimizer.zero_grad()
+            loss = loss_func(output_logits, target)
+            training_loss += loss.item()
 
-            loss = model.criterion(output_logits, target)
-            print(loss.item())
+            # update model
+            optimizer.zero_grad()
             loss.backward()
+            optimizer.step()
 
-            # optimizer step
-            model.optimizer.step()
+        training_loss /= len(train_dataloader)
+        print(f"batch training loss: {training_loss}")
 
-            # model.eval()
-            # validation stuff (ROGUE/BLEU) , use prediuct function
+        # run one epoch of validation
+        model.eval()
+        validation_loss = 0  # "Not implemented"
+        validation_acc = 0  # "Not implemented" - rouge/bleu
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(dev_dataloader):
+                # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
+                images, lemmas, _ = batch
+
+                # forward pass
+                predicted_tokens_encoded = model.predict(images)
+
+                # calculate loss
+                pass
+
+                # calculate accuracy or rouge/bleu-scores
+                pass
+
+        t1 = time.time()
+
+        history['train_loss'].append(training_loss)
+        history['val_loss'].append(validation_loss)
+        history['val_acc'].append(validation_acc)
+        history['time'].append(t1 - t0)
+
+        progress.set_postfix({'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
+
 
 
 if __name__ == "__main__":
