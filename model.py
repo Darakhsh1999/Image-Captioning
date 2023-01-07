@@ -96,10 +96,12 @@ class ImageCaptionGenerator(torch.nn.Module):
 
     def __init__(self, vocab_lc, par: Params):
         super().__init__()
+
+        # parameters and vocab
         self.vocab_lc = vocab_lc
+        self.p = par
 
         # set up network layers
-        self.p = par
         self.encoder = Encoder(par)
         self.decoder = Decoder(par)
 
@@ -114,13 +116,14 @@ class ImageCaptionGenerator(torch.nn.Module):
         return self.decoder.predict(latent_image)
 
 
-def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, par):
-    device = next(model.parameters()).device
+def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, par: Params):
+    
+    device = par.device
 
     # Define loss and optimizer
     PAD = model.vocab_lc["<PAD>"]
-    loss_func = nn.CrossEntropyLoss(ignore_index=PAD)
-    optimizer = torch.optim.Adam(model.parameters(), lr=par.lr)
+    loss_func = nn.CrossEntropyLoss(ignore_index= PAD)
+    optimizer = torch.optim.Adam(model.parameters(), lr= par.lr)
 
     # Contains the statistics that will be returned.
     history = defaultdict(list)
@@ -135,6 +138,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         training_loss = 0
         num_batches = len(train_dataloader)
         for batch_idx, batch in enumerate(train_dataloader):
+
             print(f"batch: {batch_idx + 1} / {num_batches}")
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
             images, lemmas, _ = batch
@@ -149,7 +153,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
             output_logits = model(images, lemmas)
             output_logits = torch.flatten(output_logits, start_dim=0, end_dim=1)  # flatten batch dims
 
-            #  calculate loss
+            # calculate loss
             loss = loss_func(output_logits, target)
             training_loss += loss.item()
 
@@ -188,13 +192,17 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         history['val_acc'].append(validation_acc)
         history['time'].append(t1 - t0)
 
-        progress.set_postfix({'time': f'{t1 - t0:.2f}', 'train_loss': f'{training_loss:.2f}', 'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
+        progress.set_postfix({
+            'time': f'{t1 - t0:.2f}',
+            'train_loss': f'{training_loss:.2f}',
+            'val_loss': f'{validation_loss:.2f}',
+            'val_acc': f'{validation_acc:.2f}'})
         torch.save(model.state_dict(), "Models/icg.pt")  # better to save model that performed best on validation set
 
 
 if __name__ == "__main__":
     batch_size = 8
-    p = Params.Params(vocab_size=100)
+    p = Params(vocab_size=100)
 
     # Encoder testing
     encoder = Encoder(p)

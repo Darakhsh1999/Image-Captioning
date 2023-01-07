@@ -1,10 +1,11 @@
-import torch.nn as nn
-
+import torch
 
 class Params:
 
     def __init__(self, vocab_size):
         self.vocab_size = vocab_size
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
     # Architecture
     emb_dim = 512  # same as Google paper
