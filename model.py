@@ -182,7 +182,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         history['val_acc'].append(validation_acc)
         history['time'].append(t1 - t0)
 
-        progress.set_postfix({'time': f'{t1:.2f}', 'train_loss': f'{training_loss:.2f}', 'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
+        progress.set_postfix({'time': f'{t1 - t0:.2f}', 'train_loss': f'{training_loss:.2f}', 'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
         torch.save(model.state_dict(), "Models/icg.pt")  # better to save model that performed best on validation set
 
 
