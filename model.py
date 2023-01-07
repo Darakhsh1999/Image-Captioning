@@ -131,12 +131,14 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         # run one epoch of training
         model.train()
         training_loss = 0
+        num_batches = len(train_dataloader)
         for batch_idx, batch in enumerate(train_dataloader):
+            print(f"batch: {batch_idx + 1} / {num_batches}")
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
             images, lemmas, _ = batch
 
             # set target to padded lemmas
-            target = torch.cat((lemmas, torch.tensor(PAD).repeat(10, 1)), dim=1)
+            target = torch.cat((lemmas, torch.tensor(PAD).repeat(par.batch_size, 1)), dim=1)
             target = torch.flatten(target)  # flatten batch dims
 
             # forward pass
@@ -180,7 +182,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         history['val_acc'].append(validation_acc)
         history['time'].append(t1 - t0)
 
-        progress.set_postfix({'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
+        progress.set_postfix({'time': f'{t1:.2f}', 'train_loss': f'{training_loss:.2f}', 'val_loss': f'{validation_loss:.2f}', 'val_acc': f'{validation_acc:.2f}'})
         torch.save(model.state_dict(), "Models/icg.pt")  # better to save model that performed best on validation set
 
 
