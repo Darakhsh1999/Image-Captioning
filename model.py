@@ -86,7 +86,7 @@ class Decoder(torch.nn.Module):
             emb_token = self.word_emb(next_token)  # integer-representation -> word_embedding
             lstm_out, _ = self.lstm(torch.unsqueeze(emb_token, dim=0))
             prob = self.output_emb(lstm_out)
-            norm_prob = nn.functional.softmax(prob)
+            norm_prob = nn.functional.softmax(prob, dim=1)
             next_token = norm_prob.argmax()
             sentence.append(next_token)
             sentence_length += 1
@@ -183,7 +183,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         model.eval()
         validation_loss = 0  # "Not implemented"
         validation_acc = 0  # "Not implemented" - rouge/bleu
-        with torch.no_grad():
+        '''with torch.no_grad():
             for batch_idx, batch in enumerate(dev_dataloader):
                 # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
                 images, lemmas, _ = batch
@@ -195,7 +195,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
                 pass
 
                 # calculate accuracy or rouge/bleu-scores
-                pass
+                pass'''
 
         t1 = time.time()
 
