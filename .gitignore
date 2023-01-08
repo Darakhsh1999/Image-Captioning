@@ -111,6 +111,7 @@ pip-selfcheck.json
 .idea
 Data/
 Datasets/
+Models/
 
 # Sensitive or high-churn files:
 *.pth

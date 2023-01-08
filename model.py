@@ -116,7 +116,7 @@ class ImageCaptionGenerator(torch.nn.Module):
         return self.decoder.predict(latent_image)
 
 
-def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, par: Params):
+def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_dataloader):
     
     device = par.device
 
@@ -129,6 +129,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
     history = defaultdict(list)
 
     progress = tqdm(range(par.n_epochs), 'Epochs')
+    print(f"Started training for {par.n_epochs} epoch, n_batches = {len(train_dataloader)}, using device: {par.device}")
     for epoch in progress:
 
         t0 = time.time()
@@ -139,19 +140,18 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
         num_batches = len(train_dataloader)
         for batch_idx, batch in enumerate(train_dataloader):
 
-            print(f"batch: {batch_idx + 1} / {num_batches}")
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
             images, lemmas, _ = batch
             images = images.to(device)
-            lemmas = lemmas.to(device)
+            lemmas = lemmas.to(device) # (batch_size, max_sen_len)
 
             # set target to padded lemmas
-            target = torch.cat((lemmas, torch.tensor(PAD).repeat(par.batch_size, 1)), dim=1)
-            target = torch.flatten(target)  # flatten batch dims
+            target = torch.cat((lemmas, torch.tensor(PAD).repeat(par.batch_size, 1).to(par.device)), dim=1) # (batch_size, max_sen_len+1)
+            target = torch.flatten(target)  # flatten batch dims (batch_size*(max_sen_len+1),)
 
             # forward pass
-            output_logits = model(images, lemmas)
-            output_logits = torch.flatten(output_logits, start_dim=0, end_dim=1)  # flatten batch dims
+            output_logits = model(images, lemmas) # (batch_size, max_sen_len+1, vocab_size)
+            output_logits = torch.flatten(output_logits, start_dim=0, end_dim=1)  # (batch_size*(max_sen_len+1), vocab_size)
 
             # calculate loss
             loss = loss_func(output_logits, target)
@@ -187,6 +187,7 @@ def train_ICG(model: ImageCaptionGenerator, train_dataloader, dev_dataloader, pa
 
         t1 = time.time()
 
+        # Save epoch data
         history['train_loss'].append(training_loss)
         history['val_loss'].append(validation_loss)
         history['val_acc'].append(validation_acc)

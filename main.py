@@ -33,7 +33,7 @@ if __name__ == "__main__":
     if os.path.exists("Models/icg.pt"):
         model.load_state_dict(torch.load("Models/icg.pt"))
 
-    train_ICG(model, train_dataloader, val_dataloader, par)
+    train_ICG(model, par, train_dataloader, val_dataloader)
 
     # Predict on test sentence
     model.eval()
