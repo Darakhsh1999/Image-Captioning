@@ -2,20 +2,19 @@ from torchmetrics.text.rouge import ROUGEScore
 from torchmetrics import BLEUScore
 from pprint import pprint
 
+pred = 'three white dogs are sprinting after a man.'
 target = 'two white cats are running after a man.'
 target2 = 'two red dogs are running after a madiownmadiowadiownaiodwn wdioandiowanoi dwaiondoiwan odiwnaiodnw oindwainon.'
 target3 = 'two black dogs'
-pred = 'three white dogs are sprinting after a man.'
-
+target4 = 'three white dogs was sprinting after a man.'
+target_list = [target, target2, target3, target4]
 
 rogue = ROUGEScore()
-bleu = BLEUScore(n_gram= 4)
+bleu = BLEUScore(n_gram= 2)
 r_scores = rogue(pred, target)
-b_scores = bleu(['three white dogs are sprinting after a man.'], [['two black dogs are running after a man', 'two red dogs are running after a man']])
-
-metric = BLEUScore()
-print(metric([pred], [[target, target2]]))
+b_scores = bleu([pred], [target_list])
 
 
-#print(r_scores)
+pprint(r_scores)
 print(10*"--")
+print(b_scores)

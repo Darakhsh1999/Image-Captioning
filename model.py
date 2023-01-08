@@ -79,28 +79,36 @@ class Decoder(torch.nn.Module):
             sentence = []
             
             # first token
-            print("input size", latent_embedding[sen_idx,:].shape)
-            lstm_out, (h_t, c_t) = self.lstm(latent_embedding[sen_idx,:], (0,0)) # (hidden_size,)
+            first_token = torch.unsqueeze(latent_embedding[sen_idx,:], dim= 0)  
+            print("input size", first_token.shape)
+            init_tuple = (torch.zeros((self.p.n_layers, self.p.hidden_size)),
+                          torch.zeros((self.p.n_layers, self.p.hidden_size)))
+            lstm_out, (h_t, c_t) = self.lstm(first_token, init_tuple) 
             print("LSTM output shape", lstm_out.shape)
+            print("LSTM output h_t shape", h_t.shape)
+            print("LSTM output c_t shape", c_t.shape)
             prob = self.output_emb(lstm_out)
             print("probabilities shape", prob.shape)
-            norm_prob = nn.functional.softmax(prob)
+            norm_prob = nn.functional.softmax(prob, dim= 1)
             print("normalized probabilities shape", norm_prob.shape)
 
-
+            # Sample next token
             next_token = norm_prob.argmax()
+            emb_next_token = torch.unsqueeze(self.word_emb(next_token), dim= 0)
             sentence.append(next_token)
 
             # while loop until EOS or max_sen_len
-            while len(sentence) < p.max_pred_sen:
+            while len(sentence) < self.p.max_pred_sen:
 
-                lstm_out, (h_t, c_t) = self.lstm(latent_embedding[sen_idx,:], (h_t, c_t)) 
+                #next_input = torch.unsqueeze(emb_next_token, dim= 0)
+                lstm_out, (h_t, c_t) = self.lstm(emb_next_token, (h_t, c_t)) 
                 prob = self.output_emb(lstm_out)
-                norm_prob = nn.functional.softmax(prob)
+                norm_prob = nn.functional.softmax(prob, dim= 1)
                 next_token = norm_prob.argmax()
+                emb_next_token = torch.unsqueeze(self.word_emb(next_token), dim= 0)
                 sentence.append(next_token)
 
-                if next_token == vocab.get("<EOS>"):
+                if next_token.item() == vocab.get("<EOS>"):
                     break
 
             sentences.append(sentence)
