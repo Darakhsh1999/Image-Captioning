@@ -36,9 +36,14 @@ if __name__ == "__main__":
     train_ICG(model, par, train_dataloader, val_dataloader)
 
     # Predict on test sentence
+    model.to("cpu")
     model.eval()
     images, lemma, _ = dev_dataset[0]
-    print(f"model prediction{dev_dataset.decode_lc(model.predict(torch.unsqueeze(images, dim=0)))}")
+    image_input = torch.unsqueeze(images, dim=0) 
+    print(image_input.shape)
+    model_out = model.predict(image_input)
+    print(model_out.shape)
+    print(f"model prediction{dev_dataset.decode_lc(model_out)}")
     print("Target caption:", dev_dataset.decode_lc(lemma))
 
 

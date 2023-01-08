@@ -55,7 +55,6 @@ class Decoder(torch.nn.Module):
             Output:
                 probability (batch, max_sen_len, vocab_size)
         """
-
         batch_size = embed_vector.shape[0]
         embed_captions = self.word_emb(caption)  # (batch_size, max_sen_len, emb_dim)
         inputs = torch.cat(
@@ -65,31 +64,48 @@ class Decoder(torch.nn.Module):
         logits = self.output_emb(output)  # (batch_size, max_sen_len+1, vocab_size)
         return logits
 
-    def predict(self, latent_embedding):
-        """ Used to predict caption for images during testing """
-        sentence = []
-        lstm_out, _ = self.lstm(latent_embedding)  # (batch, emb_dim) -> (batch_size, seq_len, hidden_size)
-        prob = self.output_emb(lstm_out)
-        norm_prob = nn.functional.softmax(prob)
+    def predict(self, latent_embedding, vocab):
+        """ Used to predict caption for images during testing 
+            
+            Input:
+              latent_embedding (batch_size, emb_dim) -> batch_size number of sentences
+            Output:
+        """
+        n_sentences = latent_embedding.shape[0]
+        sentences = []
 
-        # sample word (greedy)
+        for sen_idx in range(n_sentences):
 
-        next_token = norm_prob.argmax()
-        sentence.append(next_token)
-
-        sentence_length = 1
-        while (sentence_length <= self.p.max_sen_len):
-            emb_token = self.word_emb(next_token)  # integer-representation -> word_embedding
-            lstm_out, _ = self.lstm(torch.unsqueeze(emb_token, dim=0))
+            sentence = []
+            
+            # first token
+            print("input size", latent_embedding[sen_idx,:].shape)
+            lstm_out, (h_t, c_t) = self.lstm(latent_embedding[sen_idx,:], (0,0)) # (hidden_size,)
+            print("LSTM output shape", lstm_out.shape)
             prob = self.output_emb(lstm_out)
-            norm_prob = nn.functional.softmax(prob, dim=1)
+            print("probabilities shape", prob.shape)
+            norm_prob = nn.functional.softmax(prob)
+            print("normalized probabilities shape", norm_prob.shape)
+
+
             next_token = norm_prob.argmax()
             sentence.append(next_token)
-            sentence_length += 1
-            if (next_token.item() == 3):  # "<EOS>" change to vocab.get
-                break
 
-        return sentence
+            # while loop until EOS or max_sen_len
+            while len(sentence) < p.max_pred_sen:
+
+                lstm_out, (h_t, c_t) = self.lstm(latent_embedding[sen_idx,:], (h_t, c_t)) 
+                prob = self.output_emb(lstm_out)
+                norm_prob = nn.functional.softmax(prob)
+                next_token = norm_prob.argmax()
+                sentence.append(next_token)
+
+                if next_token == vocab.get("<EOS>"):
+                    break
+
+            sentences.append(sentence)
+
+        return sentences
 
 
 class ImageCaptionGenerator(torch.nn.Module):
@@ -113,7 +129,7 @@ class ImageCaptionGenerator(torch.nn.Module):
     def predict(self, image):
         """ Takes in image and returns caption """
         latent_image = self.encoder(image)
-        return self.decoder.predict(latent_image)
+        return self.decoder.predict(latent_image, self.vocab_lc)
 
 
 def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_dataloader):
@@ -129,7 +145,7 @@ def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_d
     history = defaultdict(list)
 
     progress = tqdm(range(par.n_epochs), 'Epochs')
-    print(f"Started training for {par.n_epochs} epoch, n_batches = {len(train_dataloader)}, using device: {par.device}")
+    print(f" Started training for {par.n_epochs} epoch, n_batches = {len(train_dataloader)}, using device: {par.device}")
     for epoch in progress:
 
         t0 = time.time()

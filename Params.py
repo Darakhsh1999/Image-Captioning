@@ -10,10 +10,10 @@ class Params:
     # Architecture
     emb_dim = 512  # same as Google paper
     batch_size = 10
-    max_sen_len = 20
+    max_pred_sen = 20
     hidden_size = 256
     n_layers = 2
 
     # Training
-    n_epochs = 10
+    n_epochs = 3
     lr = 0.01

@@ -179,9 +179,7 @@ if __name__ == "__main__":
         # Write data to memory
         with open("Datasets/dataset.p", "wb") as f:
             pickle.dump([train_dataset, dev_dataset, test_dataset], f)
-
-    # Load datasets from file
-    else:
+    else: # Load datasets from file 
         with open("Datasets/dataset.p", "rb") as f:
             train_dataset, dev_dataset, test_dataset = pickle.load(f)
 
