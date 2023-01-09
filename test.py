@@ -11,10 +11,21 @@ target_list = [target, target2, target3, target4]
 
 rogue = ROUGEScore()
 bleu = BLEUScore(n_gram= 2)
-r_scores = rogue(pred, target)
+r_scores = rogue(pred, target_list)
 b_scores = bleu([pred], [target_list])
 
 
 pprint(r_scores)
 print(10*"--")
 print(b_scores)
+
+
+aaaaa = ["this", "is", "a", "list", "of", "tokens"]
+ret_str = " ".join(aaaaa)
+print(ret_str)
+
+itarget = "this is a longer message which is the target"
+ipred = "my prediction is short"
+
+print(f"{'Prediction:':15} {ipred}")
+print(f"{'target:':15} {itarget}")

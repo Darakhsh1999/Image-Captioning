@@ -2,9 +2,13 @@ import time
 import torch
 import torch.nn as nn
 import torchvision
+from random import randint
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from Params import Params
 from collections import defaultdict
+from torchmetrics.text.rouge import ROUGEScore
+from torchmetrics import BLEUScore
 
 
 class Encoder(torch.nn.Module):
@@ -70,32 +74,27 @@ class Decoder(torch.nn.Module):
             Input:
               latent_embedding (batch_size, emb_dim) -> batch_size number of sentences
             Output:
+              List of integer encoded sentences
         """
         n_sentences = latent_embedding.shape[0]
-        sentences = []
+        sentences = [] # list of torch tensors
 
         for sen_idx in range(n_sentences):
 
             sentence = []
             
             # first token
-            first_token = torch.unsqueeze(latent_embedding[sen_idx,:], dim= 0)  
-            print("input size", first_token.shape)
-            init_tuple = (torch.zeros((self.p.n_layers, self.p.hidden_size)),
-                          torch.zeros((self.p.n_layers, self.p.hidden_size)))
-            lstm_out, (h_t, c_t) = self.lstm(first_token, init_tuple) 
-            print("LSTM output shape", lstm_out.shape)
-            print("LSTM output h_t shape", h_t.shape)
-            print("LSTM output c_t shape", c_t.shape)
-            prob = self.output_emb(lstm_out)
-            print("probabilities shape", prob.shape)
-            norm_prob = nn.functional.softmax(prob, dim= 1)
-            print("normalized probabilities shape", norm_prob.shape)
+            first_token = torch.unsqueeze(latent_embedding[sen_idx,:], dim= 0).to(self.p.device) # (1, emb_dim)  
+            init_tuple = (torch.zeros((self.p.n_layers, self.p.hidden_size)).to(self.p.device),
+                          torch.zeros((self.p.n_layers, self.p.hidden_size)).to(self.p.device)) # (n_layers, emb_dim)
+            lstm_out, (h_t, c_t) = self.lstm(first_token, init_tuple) # (1, hidden_size) 
+            prob = self.output_emb(lstm_out) # (1, vocab_size)
+            norm_prob = nn.functional.softmax(prob, dim= 1) # (1, vocab_size)
 
             # Sample next token
             next_token = norm_prob.argmax()
             emb_next_token = torch.unsqueeze(self.word_emb(next_token), dim= 0)
-            sentence.append(next_token)
+            sentence.append(next_token.item())
 
             # while loop until EOS or max_sen_len
             while len(sentence) < self.p.max_pred_sen:
@@ -106,28 +105,28 @@ class Decoder(torch.nn.Module):
                 norm_prob = nn.functional.softmax(prob, dim= 1)
                 next_token = norm_prob.argmax()
                 emb_next_token = torch.unsqueeze(self.word_emb(next_token), dim= 0)
-                sentence.append(next_token)
+                sentence.append(next_token.item())
 
                 if next_token.item() == vocab.get("<EOS>"):
                     break
 
-            sentences.append(sentence)
+            sentences.append(torch.tensor(sentence, dtype= torch.int32))
 
         return sentences
 
 
 class ImageCaptionGenerator(torch.nn.Module):
 
-    def __init__(self, vocab_lc, par: Params):
+    def __init__(self, vocab_lc, p: Params):
         super().__init__()
 
         # parameters and vocab
         self.vocab_lc = vocab_lc
-        self.p = par
+        self.p = p
 
         # set up network layers
-        self.encoder = Encoder(par)
-        self.decoder = Decoder(par)
+        self.encoder = Encoder(p)
+        self.decoder = Decoder(p)
 
     def forward(self, image, lemma):
         """ Takes in images and returns probability distribution for each token """
@@ -139,21 +138,84 @@ class ImageCaptionGenerator(torch.nn.Module):
         latent_image = self.encoder(image)
         return self.decoder.predict(latent_image, self.vocab_lc)
 
+def performance_scores(model: ImageCaptionGenerator, data_loader: DataLoader, rouge_metric, bleu_metric):
+    """ Calculates performance metrics from dataloader 
+        
+        Input:
+          Dataloader
+        Output:
+         average scores: (bleu, rouge1, rouge2, rouge3) 
+    """
 
-def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_dataloader):
+    rouge1 = 0
+    rouge2 = 0
+    rougeL = 0
+    bleu = 0
     
-    device = par.device
 
-    # Define loss and optimizer
+    model.eval()
+    with torch.no_grad():
+        for batch_idx, batch in enumerate(data_loader):
+
+
+            # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
+            images, lemmas, _ = batch
+            batch_size = images.shape[0]
+            images = images.to(model.p.device)
+
+            # forward pass
+            predicted_lemmas = model.predict(images)
+
+            # calculate ROUGE and BLEU
+            for sen_idx in range(batch_size):
+                
+                EOS_idx = (lemmas[sen_idx] == model.vocab_lc.get("<EOS>")).nonzero().item()
+                qq = lemmas[sen_idx, 0:EOS_idx]
+                decoded_lemma = data_loader.dataset.decode_lc(lemmas[sen_idx, 1:EOS_idx])
+                target = " ".join(decoded_lemma)
+                predicted_lemma = data_loader.dataset.decode_lc(predicted_lemmas[sen_idx][1:-1])
+                predicted_string = " ".join(predicted_lemma)
+
+                # BLEU
+                bleu += bleu_metric([predicted_string], [[target]]).item()
+
+                # Rouge
+                rouge_scores = rouge_metric(predicted_string, target)
+                rouge1 += rouge_scores["rouge1_recall"].item()
+                rouge2 += rouge_scores["rouge2_recall"].item()
+                rougeL += rouge_scores["rougeL_recall"].item()
+
+
+    # Mean
+    n_sentences = len(data_loader.dataset)
+    bleu /= n_sentences
+    rouge1 /= n_sentences
+    rouge2 /= n_sentences
+    rougeL /= n_sentences
+
+    return (bleu, rouge1, rouge2, rougeL)
+
+
+def train_ICG(
+    model: ImageCaptionGenerator,
+    p: Params,
+    loss_func: torch.nn,
+    optimizer: torch.optim ,
+    train_dataloader: DataLoader,
+    dev_dataloader: DataLoader):
+    
+    # Local help variables
+    device = p.device
     PAD = model.vocab_lc["<PAD>"]
-    loss_func = nn.CrossEntropyLoss(ignore_index= PAD)
-    optimizer = torch.optim.Adam(model.parameters(), lr= par.lr)
+    rouge_metric = ROUGEScore() 
+    bleu_metric = BLEUScore(n_gram= 3)
 
     # Contains the statistics that will be returned.
     history = defaultdict(list)
 
-    progress = tqdm(range(par.n_epochs), 'Epochs')
-    print(f" Started training for {par.n_epochs} epoch, n_batches = {len(train_dataloader)}, using device: {par.device}")
+    # Main training loop
+    progress = tqdm(range(p.n_epochs), 'Epochs')
+    print(f" Started training for {p.n_epochs} epochs, n_batches = {len(train_dataloader)}, using device: {p.device}")
     for epoch in progress:
 
         t0 = time.time()
@@ -161,7 +223,6 @@ def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_d
         # run one epoch of training
         model.train()
         training_loss = 0
-        num_batches = len(train_dataloader)
         for batch_idx, batch in enumerate(train_dataloader):
 
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
@@ -170,7 +231,7 @@ def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_d
             lemmas = lemmas.to(device) # (batch_size, max_sen_len)
 
             # set target to padded lemmas
-            target = torch.cat((lemmas, torch.tensor(PAD).repeat(par.batch_size, 1).to(par.device)), dim=1) # (batch_size, max_sen_len+1)
+            target = torch.cat((lemmas, torch.tensor(PAD).repeat(p.batch_size, 1).to(p.device)), dim=1) # (batch_size, max_sen_len+1)
             target = torch.flatten(target)  # flatten batch dims (batch_size*(max_sen_len+1),)
 
             # forward pass
@@ -186,55 +247,48 @@ def train_ICG(model: ImageCaptionGenerator, par: Params, train_dataloader, dev_d
             loss.backward()
             optimizer.step()
 
-        training_loss /= len(train_dataloader)
-        print(f"batch training loss: {training_loss}")
+        training_loss /= len(train_dataloader.dataset) # avg w.r.t number of images
 
-        # run one epoch of validation
-        model.eval()
-        validation_loss = 0  # "Not implemented"
-        validation_acc = 0  # "Not implemented" - rouge/bleu
-        '''with torch.no_grad():
-            for batch_idx, batch in enumerate(dev_dataloader):
-                # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
-                images, lemmas, _ = batch
-                images = images.to(device)
-                lemmas = lemmas.to(device)
-
-                # forward pass
-                predicted_tokens_encoded = model.predict(images)
-
-                # calculate loss
-                pass
-
-                # calculate accuracy or rouge/bleu-scores
-                pass'''
+        # Validation loop
+        bleu, R1, R2, RL = performance_scores(model, dev_dataloader, rouge_metric, bleu_metric)
 
         t1 = time.time()
 
         # Save epoch data
         history['train_loss'].append(training_loss)
-        history['val_loss'].append(validation_loss)
-        history['val_acc'].append(validation_acc)
+        history['bleu'].append(bleu)
+        history['rouge1'].append(R1)
+        history['rouge2'].append(R2)
+        history['rougeL'].append(RL)
         history['time'].append(t1 - t0)
 
         progress.set_postfix({
-            'time': f'{t1 - t0:.2f}',
-            'train_loss': f'{training_loss:.2f}',
-            'val_loss': f'{validation_loss:.2f}',
-            'val_acc': f'{validation_acc:.2f}'})
+            'time': f'{t1 - t0:.1f}',
+            'train_loss': f'{training_loss:.3f}',
+            'bleu': f'{bleu:.3f}',
+            'rouge1': f'{R1:.3f}',
+            'rouge2': f'{R2:.3f}',
+            'rougeL': f'{RL:.3f}'})
         torch.save(model.state_dict(), "Models/icg.pt")  # better to save model that performed best on validation set
 
 
-if __name__ == "__main__":
-    batch_size = 8
-    p = Params(vocab_size=100)
+def predict_one(model, dataset, idx= None):
+    """ Performs one prediction on random image in dataset"""
 
-    # Encoder testing
-    encoder = Encoder(p)
-    A = torch.rand(batch_size, 3, 250, 300)  # (batch, channel, width, height)
-    A_out = encoder(A)
-    print(A_out.shape)
+    model.eval()
+    if idx is None:
+        sample_idx = randint(0, len(dataset)-1)
+    images, lemma, _ = dataset[sample_idx]
+    image_input = torch.unsqueeze(images, dim=0).to(model.p.device) 
+    model_out = model.predict(image_input)
 
-    # Decoder testing
-    # decoder = Decoder(p)
-    # B_out = decoder(A_out)
+    token_decoder = dataset.decode_lc
+
+    decoded_prediction = token_decoder(model_out[0])
+    decoded_lemma = token_decoder(lemma)
+    EOS_pred = decoded_prediction.index("<EOS>")
+    EOS_target = decoded_lemma.index("<EOS>")
+    prediction = " ".join(decoded_prediction[1:EOS_pred])
+    target = " ".join(decoded_lemma[1:EOS_target])
+
+    return (prediction, target)

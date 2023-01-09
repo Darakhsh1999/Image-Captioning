@@ -1,2 +1,4 @@
-- change lemma_caption to lemma
-- fix predict function
+- implement validation function in the ICG's forward function
+- change hyper Params (increase batch size)
+- tqdm loop for continous 
+- add dropout
