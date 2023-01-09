@@ -15,7 +15,7 @@ class Params:
 
     # Training
     n_epochs = 3
-    lr = 0.01
+    lr = 0.001
     dropout_rate = 0.4
 
     bleu_ngram = 2

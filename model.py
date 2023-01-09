@@ -169,12 +169,18 @@ def performance_scores(model: ImageCaptionGenerator, data_loader: DataLoader, ro
             # calculate ROUGE and BLEU
             for sen_idx in range(batch_size):
                 
+                # prediction
+                predicted_lemma = data_loader.dataset.decode_lc(predicted_lemmas[sen_idx])
+                try:
+                    EOS_idx = predicted_lemma.index("<EOS>")
+                    predicted_string = " ".join(predicted_lemma[1:EOS_idx])
+                except:
+                    predicted_string = " ".join(predicted_lemma[1:])
+
+                # target
                 EOS_idx = (lemmas[sen_idx] == model.vocab_lc.get("<EOS>")).nonzero().item()
-                qq = lemmas[sen_idx, 0:EOS_idx]
-                decoded_lemma = data_loader.dataset.decode_lc(lemmas[sen_idx, 1:EOS_idx])
-                target = " ".join(decoded_lemma)
-                predicted_lemma = data_loader.dataset.decode_lc(predicted_lemmas[sen_idx][1:-1])
-                predicted_string = " ".join(predicted_lemma)
+                decoded_target = data_loader.dataset.decode_lc(lemmas[sen_idx, 1:EOS_idx])
+                target = " ".join(decoded_target)
 
                 # BLEU
                 bleu += bleu_metric([predicted_string], [[target]]).item()
@@ -214,8 +220,8 @@ def train_ICG(
     history = defaultdict(list)
 
     # Main training loop
-    progress = tqdm(range(p.n_epochs), 'Epochs')
     print(f" Started training for {p.n_epochs} epochs, n_batches = {len(train_dataloader)}, using device: {p.device}")
+    progress = tqdm(range(p.n_epochs), 'Training')
     for epoch in progress:
 
         t0 = time.time()
@@ -223,7 +229,7 @@ def train_ICG(
         # run one epoch of training
         model.train()
         training_loss = 0
-        for batch_idx, batch in enumerate(train_dataloader):
+        for _, batch in enumerate(train_dataloader):
 
             # images: [batch,channel,width,height], lemmas: [batch,max_sen_len]
             images, lemmas, _ = batch
@@ -255,12 +261,13 @@ def train_ICG(
         t1 = time.time()
 
         # Save epoch data
+        history['epoch'].append(epoch)
+        history['time'].append(t1 - t0)
         history['train_loss'].append(training_loss)
         history['bleu'].append(bleu)
         history['rouge1'].append(R1)
         history['rouge2'].append(R2)
         history['rougeL'].append(RL)
-        history['time'].append(t1 - t0)
 
         progress.set_postfix({
             'time': f'{t1 - t0:.1f}',
@@ -270,6 +277,8 @@ def train_ICG(
             'rouge2': f'{R2:.3f}',
             'rougeL': f'{RL:.3f}'})
         torch.save(model.state_dict(), "Models/icg.pt")  # better to save model that performed best on validation set
+    
+    return history
 
 
 def predict_one(model, dataset, idx= None):
@@ -284,11 +293,20 @@ def predict_one(model, dataset, idx= None):
 
     token_decoder = dataset.decode_lc
 
+    # Prediction
     decoded_prediction = token_decoder(model_out[0])
+    try:
+        EOS_pred = decoded_prediction.index("<EOS>")
+    except:
+        EOS_pred = -1
+    if EOS_pred == -1:
+        prediction = " ".join(decoded_prediction[1:])
+    else:
+        prediction = " ".join(decoded_prediction[1:EOS_pred])
+
+    # Target
     decoded_lemma = token_decoder(lemma)
-    EOS_pred = decoded_prediction.index("<EOS>")
     EOS_target = decoded_lemma.index("<EOS>")
-    prediction = " ".join(decoded_prediction[1:EOS_pred])
     target = " ".join(decoded_lemma[1:EOS_target])
 
     return (prediction, target)

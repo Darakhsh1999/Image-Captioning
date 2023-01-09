@@ -26,9 +26,9 @@ if __name__ == "__main__":
     p = Params(vocab_size=len(vocab_lc)) # parameters
 
     # Dataloaders
-    train_dataloader = DataLoader(dataset= train_dataset, batch_size= p.batch_size)
-    val_dataloader = DataLoader(dataset= dev_dataset, batch_size= p.batch_size)
-    test_dataloader = DataLoader(dataset= test_dataset, batch_size= p.batch_size)
+    train_dataloader = DataLoader(dataset= train_dataset, batch_size= p.batch_size, shuffle= True)
+    val_dataloader = DataLoader(dataset= dev_dataset, batch_size= p.batch_size, shuffle= False)
+    test_dataloader = DataLoader(dataset= test_dataset, batch_size= p.batch_size, shuffle= False)
 
     # Model instance
     model = ImageCaptionGenerator(vocab_lc, p)
