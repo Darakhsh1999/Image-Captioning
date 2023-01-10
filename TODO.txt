@@ -1,2 +1,2 @@
 - change hyper Params (increase batch size)
-- add dropout
+- pretraiend word embedding ? 

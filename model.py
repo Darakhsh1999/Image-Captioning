@@ -9,15 +9,18 @@ from Params import Params
 from collections import defaultdict
 from torchmetrics.text.rouge import ROUGEScore
 from torchmetrics import BLEUScore
+from flickerdata import FlickerData
 
 
 class Encoder(torch.nn.Module):
     """ Encodes image into an embeding vector used for decoder """
 
-    def __init__(self, p):
+    def __init__(self, p: Params):
         super().__init__()
 
         self.vgg = torchvision.models.vgg19()  # load in encoder
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(p= p.dropout_rate)
         for _, param in self.vgg.named_parameters():  # freeze vgg weights
             param.requires_grad = False
 
@@ -33,13 +36,14 @@ class Encoder(torch.nn.Module):
         X = X.view(batch_size, 512 * 7 * 7)  # (batch,25088) flatten
         X = self.vgg.classifier[0:3](X)  # (batch,4096)
         X = self.latent_embedding(X)  # (batch,emb_dim)
+        X = self.dropout(self.relu(X)) 
         return X
 
 
 class Decoder(torch.nn.Module):
     """ Decodes a embed_vector into lemmas/captions """
 
-    def __init__(self, p):
+    def __init__(self, p: Params):
         super().__init__()
 
         self.p = p
@@ -48,6 +52,7 @@ class Decoder(torch.nn.Module):
             hidden_size=p.hidden_size,
             num_layers=p.n_layers,
             batch_first=True)
+        self.dropout = nn.Dropout(p.dropout_rate)
         self.word_emb = nn.Embedding(p.vocab_size, p.emb_dim)
         self.output_emb = nn.Linear(p.hidden_size, p.vocab_size)
 
@@ -60,7 +65,7 @@ class Decoder(torch.nn.Module):
                 probability (batch, max_sen_len, vocab_size)
         """
         batch_size = embed_vector.shape[0]
-        embed_captions = self.word_emb(caption)  # (batch_size, max_sen_len, emb_dim)
+        embed_captions = self.dropout(self.word_emb(caption))  # (batch_size, max_sen_len, emb_dim)
         inputs = torch.cat(
             (embed_vector.view(batch_size, 1, self.p.emb_dim), embed_captions),
             dim=1)  # (batch_size, max_sen_len+1, emb_dim)
@@ -92,7 +97,7 @@ class Decoder(torch.nn.Module):
             norm_prob = nn.functional.softmax(prob, dim= 1) # (1, vocab_size)
 
             # Sample next token
-            next_token = norm_prob.argmax()
+            next_token = self.p.sampling_strat(norm_prob)
             emb_next_token = torch.unsqueeze(self.word_emb(next_token), dim= 0)
             sentence.append(next_token.item())
 
@@ -103,7 +108,7 @@ class Decoder(torch.nn.Module):
                 lstm_out, (h_t, c_t) = self.lstm(emb_next_token, (h_t, c_t)) 
                 prob = self.output_emb(lstm_out)
                 norm_prob = nn.functional.softmax(prob, dim= 1)
-                next_token = norm_prob.argmax()
+                next_token = self.p.sampling_strat(norm_prob)
                 emb_next_token = torch.unsqueeze(self.word_emb(next_token), dim= 0)
                 sentence.append(next_token.item())
 
@@ -142,17 +147,18 @@ def performance_scores(model: ImageCaptionGenerator, data_loader: DataLoader, ro
     """ Calculates performance metrics from dataloader 
         
         Input:
-          Dataloader
+          - model
+          - Dataloader
+          - rouge metric
+          - bleu metric
         Output:
          average scores: (bleu, rouge1, rouge2, rouge3) 
     """
-
     rouge1 = 0
     rouge2 = 0
     rougeL = 0
     bleu = 0
     
-
     model.eval()
     with torch.no_grad():
         for batch_idx, batch in enumerate(data_loader):
@@ -214,7 +220,7 @@ def train_ICG(
     device = p.device
     PAD = model.vocab_lc["<PAD>"]
     rouge_metric = ROUGEScore() 
-    bleu_metric = BLEUScore(n_gram= 3)
+    bleu_metric = BLEUScore(n_gram= p.bleu_ngram)
 
     # Contains the statistics that will be returned.
     history = defaultdict(list)
@@ -281,15 +287,15 @@ def train_ICG(
     return history
 
 
-def predict_one(model, dataset, idx= None):
+def predict_one(model: ImageCaptionGenerator, dataset: FlickerData, idx: int = None):
     """ Performs one prediction on random image in dataset"""
 
     model.eval()
     if idx is None:
         sample_idx = randint(0, len(dataset)-1)
-    images, lemma, _ = dataset[sample_idx]
-    image_input = torch.unsqueeze(images, dim=0).to(model.p.device) 
-    model_out = model.predict(image_input)
+    image, lemma, _ = dataset[sample_idx]
+    image = torch.unsqueeze(image, dim=0).to(model.p.device) 
+    model_out = model.predict(image)
 
     token_decoder = dataset.decode_lc
 

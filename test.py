@@ -29,3 +29,7 @@ ipred = "my prediction is short"
 
 print(f"{'Prediction:':15} {ipred}")
 print(f"{'target:':15} {itarget}")
+
+import torchvision
+vgg = torchvision.models.vgg19()  # load in encoder
+print(vgg.named_parameters)
