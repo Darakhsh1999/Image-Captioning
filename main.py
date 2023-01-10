@@ -48,32 +48,31 @@ if __name__ == "__main__":
 
     if train_model:
         train_history = train_ICG(model, p, loss_func, optimizer, train_dataloader, val_dataloader)
-        x = np.arange(p.n_epochs)
-        plt.plot(x, train_history["train_loss"])
-        plt.plot(x, train_history["bleu"])
-        plt.plot(x, train_history["rouge1"])
-        plt.plot(x, train_history["rouge2"])
-        plt.plot(x, train_history["rougeL"])
-        plt.legend(["train loss", "BLEU", "R1", "R2", "RL"])
-        plt.title("Training and validation metrics")
-        plt.xlabel("epoch")
-        plt.ylabel("metric")
-        plt.show()
 
 
     # Test performance metrics
     rouge_metric = ROUGEScore() 
     bleu_metric = BLEUScore(n_gram= p.bleu_ngram)
     bleu, R1, R2, RL = performance_scores(model, test_dataloader, rouge_metric, bleu_metric)
-    print(f"{'bleu':10}: {bleu:.3f} \n {'R1':10}: {R1:.3f}, \n {'R2':10}: {R2:.3f} \n {'RL':10}: {RL:.3f}")
+    print(f"{'bleu':10}: {bleu:.3f} \n{'R1':10}: {R1:.3f}, \n{'R2':10}: {R2:.3f} \n{'RL':10}: {RL:.3f}")
 
     # Predict on test sentence
-    n_predictions = 4
+    n_predictions = 5
     for _ in range(n_predictions):
         prediction, target = predict_one(model, test_dataset)
         print(f"{'Prediction:':15} {prediction}") 
         print(f"{'Target:':15} {target}") 
 
+if train_model:
+    x = np.arange(p.n_epochs)
+    plt.plot(x, train_history["train_loss"])
+    plt.plot(x, train_history["bleu"])
+    plt.plot(x, train_history["rouge1"])
+    plt.plot(x, train_history["rouge2"])
+    plt.plot(x, train_history["rougeL"])
+    plt.legend(["train loss", "BLEU", "R1", "R2", "RL"])
+    plt.title("Training and validation metrics")
+    plt.xlabel("epoch")
+    plt.ylabel("metric")
+    plt.show()
 
-
-    

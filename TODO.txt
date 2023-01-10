@@ -1,2 +1,1 @@
-- change hyper Params (increase batch size)
-- pretraiend word embedding ? 
+- explore potential pretrained embedding layers?
