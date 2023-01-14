@@ -15,7 +15,7 @@ from torchmetrics.text.rouge import ROUGEScore
 if __name__ == "__main__":
 
     train_model = True
-    reset_model = True
+    reset_model = False
 
     # Load in preprocessed dataset
     if os.path.exists("Datasets/dataset.p"):
@@ -71,8 +71,9 @@ if train_model:
     plt.plot(x, train_history["rouge2"])
     plt.plot(x, train_history["rougeL"])
     plt.legend(["train loss", "BLEU", "R1", "R2", "RL"])
+    plt.ylim([0, 0.5])
     plt.title("Training and validation metrics")
     plt.xlabel("epoch")
-    plt.ylabel("metric")
+    plt.ylabel("scores")
     plt.show()
 

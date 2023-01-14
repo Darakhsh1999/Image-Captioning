@@ -8,14 +8,14 @@ class Params:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Architecture
-    emb_dim = 256  # same as Google paper (512)
+    emb_dim = 24  # same as Google paper (512)
     batch_size = 100
     max_pred_sen = 20
-    hidden_size = 256
+    hidden_size = 12
     n_layers = 1
 
     # Training
-    n_epochs = 50
+    n_epochs = 20
     lr = 3e-4
     dropout_rate = 0.4
 
